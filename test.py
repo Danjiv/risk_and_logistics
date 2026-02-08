@@ -20,10 +20,11 @@ DistanceDistrictDistrict_df = pd.read_csv(
 )
 DistanceDistrictDistrict_df.columns = DistanceDistrictDistrict_df.columns.astype(int)
 
-preprocessing.get_clustered_distance_weighted_by_demand(DistanceDistrictDistrict_df,
-                                                        DemandPeriodsProportion,
-                                                        con_index_dict)
+DistanceDistrictPeriod_df_list = preprocessing.get_clustered_distance_weighted_by_demand(DistanceDistrictDistrict_df,
+                                                                                         DemandPeriodsProportion,
+                                                                                         con_index_dict)
 
+DistanceDistrictPeriod_df_list[0]["Aberdeen South"].to_csv("check_distances.csv")
 
 #PostcodeDistricts[PostcodeDistricts["Constituency"]=="Aberdeen South"].to_csv("working.csv")
 #PostcodeDistricts.to_csv("working.csv")
