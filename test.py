@@ -7,14 +7,22 @@ import preprocessing
 data_dir = "CaseStudyDataPY"
 
 #PostcodeDistricts = pd.read_csv(f"{data_dir}/PostcodeDistricts.csv", index_col=0)
-PostcodeDistricts, con_index_dict = pd.read_csv(f"{data_dir}/PostcodeDistricts.csv")
+PostcodeDistricts = pd.read_csv(f"{data_dir}/PostcodeDistricts.csv")
 
-PostcodeDistricts_constituency = preprocessing.get_constituency(PostcodeDistricts)
+PostcodeDistricts_constituency, con_index_dict  = preprocessing.get_constituency(PostcodeDistricts)
 
 DemandPeriods_df = pd.read_csv(f"{data_dir}/DemandPeriods.csv")
 
 DemandPeriodsGrouped, DemandPeriodsProportion = preprocessing.get_clustered_demand(DemandPeriods_df, PostcodeDistricts_constituency)
 
+DistanceDistrictDistrict_df = pd.read_csv(
+    f"{data_dir}/Distance District-District.csv", index_col=0
+)
+DistanceDistrictDistrict_df.columns = DistanceDistrictDistrict_df.columns.astype(int)
+
+preprocessing.get_clustered_distance_weighted_by_demand(DistanceDistrictDistrict_df,
+                                                        DemandPeriodsProportion,
+                                                        con_index_dict)
 
 
 #PostcodeDistricts[PostcodeDistricts["Constituency"]=="Aberdeen South"].to_csv("working.csv")
