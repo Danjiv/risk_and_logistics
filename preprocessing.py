@@ -17,7 +17,7 @@ def get_constituency(PostcodeDistricts: pd.DataFrame) -> Tuple[pd.DataFrame, dic
                   for constituency in constituency_set
     }
 
-    print(index_dict["Aberdeen South"])
+    #print(index_dict["Aberdeen South"])
 
     return PostcodeDistricts, index_dict
 
@@ -79,24 +79,25 @@ def get_clustered_distance_weighted_by_demand(DistanceDistrictDistrict_df: pd.Da
     demand_periods = list(set(DemandPeriods_df["Period"]))
     demand_periods.sort()
 
-    distance_list = []
+    #distance_list = []
+
+    weighted_con_distance_dict = {}
 
     for p in demand_periods:
-        DemandPeriods_df_year = DemandPeriods_df[DemandPeriods_df["Period"] == p]
-        weighted_con_distance_dict = {}
+        DemandPeriods_df_year = DemandPeriods_df[DemandPeriods_df["Period"] == p]        
         for con in con_distances.keys():
             DemandPeriods_df_year_ct = DemandPeriods_df_year[DemandPeriods_df_year["Constituency"] == con]
             con_distances_array = con_distances[con].to_numpy()
             weights = DemandPeriods_df_year_ct["DemandProportion"].to_numpy()
-            weighted_con_distance_dict[con] = pd.Series(con_distances_array.dot(weights))
+            weighted_con_distance_dict[(con, p)] = pd.Series(con_distances_array.dot(weights))
             #if con == "Aberdeen South" and p == 1:
             #    print(DemandPeriods_df_year_ct)
             #    print(con_distances[con].head())
             #    print(weighted_con_distance_dict[con].head())
                      
 
-        distance_list.append(pd.DataFrame(weighted_con_distance_dict))
+        #distance_list.append(pd.DataFrame(weighted_con_distance_dict))
 
-    return distance_list   
+    return weighted_con_distance_dict   
 
 
