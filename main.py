@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 import xpress as xp
 import os
 import zipfile
@@ -11,10 +12,9 @@ data_dir = "CaseStudyDataPY"
 # The first column is used as the supplier index
 # -----------------------------------------------------------------------------
 Suppliers_df = pd.read_csv(f"{data_dir}/Suppliers.csv", index_col=0)
+Vehicle_df = pd.read_csv(f"{data_dir}/vehicleType.csv", index_col=0)
 # Maximum supplier index (assumed to be integer-indexed)
 nbSuppliers = Suppliers_df.index.max()
-
-
 
 # -----------------------------------------------------------------------------
 # Read postcode district data (used to define customers)
@@ -39,6 +39,13 @@ Candidates_df = pd.read_csv(f"{data_dir}/Candidates.csv", index_col=0)
 nbCandidates = Candidates_df.index.max()
 
 # -----------------------------------------------------------------------------
+# Read candidate capacity and setup operating costs data
+
+Capacity_df = pd.read_csv(f"{data_dir}/Capacity.csv")
+Setup_df = pd.read_csv(f"{data_dir}/Setup.csv")
+Operating_df = pd.read_csv(f"{data_dir}/Operating.csv")
+
+# -----------------------------------------------------------------------------
 # Read distance matrices
 # Supplier → District distances
 # District → District distances
@@ -61,6 +68,7 @@ DistanceDistrictDistrict_df.columns = DistanceDistrictDistrict_df.columns.astype
 DistanceDistrictPeriod_df_dict = preprocessing.get_clustered_distance_weighted_by_demand(DistanceDistrictDistrict_df,
                                                                                          DemandPeriodsProportion,
                                                                                          con_index_dict)
+
 
 # Number of time periods
 nbPeriods = DemandPeriods_df["Period"].max()
@@ -94,9 +102,11 @@ nbScenarios = DemandPeriodsScenarios_df["Scenario"].max()
 # =============================================================================
 # Index sets
 # =============================================================================
-Customers  = list[con_index_dict.keys()]
+Customers  = list(con_index_dict.keys())
 Candidates = Candidates_df.index
+#print(Candidates[0:10])
 Suppliers  = Suppliers_df.index
+Products = range(1, DemandPeriods_df["Product"].max() + 1)
 
 
 # =============================================================================
@@ -162,11 +172,12 @@ CostSupplierCandidate = {
     for k in Suppliers
 }
 
+#print(DistanceDistrictPeriod_df_dict.get((i, t))[j])
 # Cost from candidate facilities to customers
 # All transports use 3.5t vans (vehicle type 3)
 CostCandidateCustomers = {
     (j, i, t): 2
-    * DistanceDistrictPeriod_df_dict[(i, t)][j]
+    * DistanceDistrictPeriod_df_dict.get((i, t))[j-1]
     * VehicleCostPerMileAndTonneOverall[3]
     / 1000
     for j in Candidates
@@ -177,14 +188,104 @@ CostCandidateCustomers = {
 # =============================================================================
 # Build optimization model
 # =============================================================================
-prob = xp.problem("Assignment 1")
+prob = xp.problem("MECWLP")
+
+prob.controls.maxtime = -300
+
+# =============================================================================
+# Declarations
+# =============================================================================
+
+build = np.array([prob.addVariable(name='build_{0}_{1}'.format(c, t), vartype=xp.binary)
+                  for c in Candidates for t in Times], dtype=xp.npvar).reshape(len(Candidates), len(Times))
+
+open = np.array([prob.addVariable(name='open_{0}_{1}'.format(c, t), vartype=xp.binary)
+                  for c in Candidates for t in Times], dtype=xp.npvar).reshape(len(Candidates), len(Times))
+
+supply = np.array([prob.addVariable(name='supply_{0}_{1}_{2}'.format(c, s, t), vartype=xp.integer)
+                   for c in Candidates for s in Suppliers for t in Times], dtype=xp.npvar).reshape(
+                       len(Candidates), len(Suppliers), len(Times))
+
+warehoused = np.array([prob.addVariable(name='warehoused_{0}_{1}_{2}'.format(c, p, t), vartype=xp.integer)
+                       for c in Candidates for p in Products for t in Times],dtype=xp.npvar).reshape(
+                           len(Candidates), len(Products), len(Times)
+                       )
+delivered = np.array([prob.addVariable(name='delivered_{0}_{1}_{2}_{3}'.format(c, Customers[k], p, t), vartype=xp.integer)
+                       for c in Candidates for k in range(len(Customers)) for p in Products for t in Times],dtype=xp.npvar).reshape(
+                           len(Candidates), len(Customers), len(Products), len(Times)
+                       )
+
+#=========================================================================================================
+# Objective function
+# ========================================================================================================
+# Need to factor in the fixed costs related to the number of vans you have to send!!!!!
+prob.setObjective(xp.Sum(open[c-1,t-1]*Operating_df["Operating cost"][c-1] for c in Candidates for t in Times) +
+                  xp.Sum(build[c-1, t-1]*Setup_df["Setup cost"][c-1] for c in Candidates for t in Times) +
+                  xp.Sum(supply[c-1, s-1, t-1]*CostSupplierCandidate[(s, c)] for c in Candidates for s in Suppliers for t in Times) +
+                  xp.Sum(delivered[c-1, k, p-1, t-1]*CostCandidateCustomers[(c, Customers[k], t)] 
+                         for c in Candidates for k in range(len(Customers)) for p in Products for t in Times), 
+                  sense = xp.minimize)
+
+# ========================================================================================================
+# Constraints
+# ========================================================================================================
+# warehouses can only be built in one time period
+prob.addConstraint(xp.Sum(build[c-1, t-1] for t in Times) == 1 for c in Candidates)
+# Warehouse remains open from the year it's built' onwards
+prob.addConstraint(open[c-1, t-1] >= build[c-1, t-1] for c in Candidates for t in Times)
+prob.addConstraint(open[c-1, t-1] >= open[c-1, t-2] for c in Candidates for t in Times if t != 1)
+prob.addConstraint(open[c-1, 0] == build[c-1, 0] for c in Candidates)
+# supplier constraints - can't supply more than total capacity
+prob.addConstraint(xp.Sum(supply[c-1, s-1, t-1] for c in Candidates) <= Suppliers_df["Capacity"][s] for s in Suppliers for t in Times)
+# update warehouse stock
+prob.addConstraint(warehoused[c-1, p-1, t-1] == xp.Sum(supply[c-1, s-1, t-1] 
+                          for s in Suppliers if Suppliers_df["Product group"][s] == p)
+                          for c in Candidates for p in Products for t in Times)
+# Can't carry more stock than max capacity
+prob.addConstraint(xp.Sum(warehoused[c-1, p-1, t-1] for p in Products) <= Candidates_df["Capacity"][c] for c in Candidates for t in Times)
+# Can't carry any stock in a warehouse that isn't open
+prob.addConstraint(xp.Sum(warehoused[c-1, p-1, t-1] for p in Products) <= Candidates_df["Capacity"][c]*open[c-1, t-1]
+                   for c in Candidates for t in Times)
+#delivery constraints
+#ensure we meed customer demand
+prob.addConstraint(xp.Sum(delivered[c-1, k, p-1, t-1] for c in Candidates) >= DemandPeriodsGrouped[Customers[k], p, t]
+                   for k in range(len(Customers)) for p in Products for t in Times)
+#can't deliver more than the warehouses hold
+prob.addConstraint(xp.Sum(delivered[c-1, k, p-1, t-1] for k in range(len(Customers))) <= warehoused[c-1, p-1, t-1]
+                   for c in Candidates for p in Products for t in Times)
+
 
 # To turn on and off the solver log
-xp.setOutputEnabled(True)
+#xp.setOutputEnabled(True)
+#prob.write("problem","lp")
 
-
-xp.setOutputEnabled(True)
+xp.setOutputEnabled(False)
 prob.solve()
+print(f'The objective function value is {prob.attributes.objval}')
+
+operating_costs = 0
+building_costs = 0
+supply_costs = 0
+delivery_costs = 0
+open = prob.getsolution(open)
+build = prob.getsolution(build)
+supply = prob.getsolution(supply)
+delivery = prob.getsolution(delivered)
+for c in Candidates:
+    for t in Times:
+        operating_costs = operating_costs + open[c-1,t-1]*Operating_df["Operating cost"][c-1]
+        building_costs = building_costs + build[c-1, t-1]*Setup_df["Setup cost"][c-1]
+        for s in Suppliers:
+            supply_costs = supply_costs + supply[c-1, s-1, t-1]*CostSupplierCandidate[(s, c)]
+        for k in range(len(Customers)):
+            for p in Products:
+                delivery_costs = delivery_costs + delivered[c-1, k, p-1, t-1]*CostCandidateCustomers[(c, Customers[k], t)]
+
+print(f"operating costs: {operating_costs}")
+print(f"building costs: {building_costs}")
+print(f"supply costs: {supply_costs}")
+print(f"delivery costs: {delivery_costs}")
+
 
 # =============================================================================
 # Post-processing and data visualisation
