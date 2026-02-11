@@ -132,6 +132,27 @@ def read_input_data_and_preprocess():
     DemandPeriodsGrouped, DemandPeriodsProportion = get_clustered_demand(DemandPeriods_df, PostcodeDistricts_constituency)
 
     # -----------------------------------------------------------------------------
+    # Read demand data with time periods and scenarios
+    # Creates a dictionary keyed by (Customer, Product, Period, Scenario)
+    # -----------------------------------------------------------------------------
+    DemandPeriodsScenarios_df = pd.read_csv(f"{data_dir}/DemandPeriodScenarios.csv")
+    DemandPeriodsScenarios_df = DemandPeriodsScenarios_df[DemandPeriodsScenarios_df["Scenario"] <= constants.number_of_scenarios_to_use()]
+
+    DemandPeriodsGrouped_scenarios = []
+    DemandPeriodsProportion_scenarios = []
+    for i in range(constants.number_of_scenarios_to_use()):
+        
+        DemandPeriodsScenarios_singular_df = DemandPeriodsScenarios_df[DemandPeriodsScenarios_df["Scenario"]==i+1]
+        DemandPeriodsGrouped_single_scenario, DemandPeriodsProportion_single_scenario = get_clustered_demand(
+            DemandPeriodsScenarios_singular_df, PostcodeDistricts_constituency)
+        DemandPeriodsGrouped_scenarios.append(DemandPeriodsGrouped_single_scenario)
+        DemandPeriodsProportion_scenarios.append(DemandPeriodsProportion_single_scenario)
+ 
+    # Group postcode demand data by westminster parliamentary constituency for each scenario
+
+
+
+    # -----------------------------------------------------------------------------
     # Read candidate facility data
     # -----------------------------------------------------------------------------
     Candidates_df = pd.read_csv(f"{data_dir}/Candidates.csv", index_col=0)
@@ -166,20 +187,20 @@ def read_input_data_and_preprocess():
     DistanceDistrictPeriod_df_dict = get_clustered_distance_weighted_by_demand(DistanceDistrictDistrict_df,
                                                                                DemandPeriodsProportion,
                                                                                con_index_dict)
+    DistanceDistrictPeriod_df_scenarios_dict_list = []
     
-    # -----------------------------------------------------------------------------
-    # Read demand data with time periods and scenarios
-    # Creates a dictionary keyed by (Customer, Product, Period, Scenario)
-    # -----------------------------------------------------------------------------
-    DemandPeriodsScenarios_df = pd.read_csv(f"{data_dir}/DemandPeriodScenarios.csv")
-    DemandPeriodsScenarios = (
-        DemandPeriodsScenarios_df
-            .set_index(["Customer", "Product", "Period", "Scenario"])["Demand"]
-            .to_dict()
-    )
+    for i in range(constants.number_of_scenarios_to_use()):
+        DistanceDistrictPeriod_df_dict_single_scenario = get_clustered_distance_weighted_by_demand(
+            DistanceDistrictDistrict_df,
+            DemandPeriodsProportion_scenarios[i],
+            con_index_dict)
+        DistanceDistrictPeriod_df_scenarios_dict_list.append(DistanceDistrictPeriod_df_dict_single_scenario)
+    
+
 
     return (Suppliers_df, Candidates_df, DemandPeriods_df, DemandPeriodsScenarios_df, DistanceSupplierDistrict_df,
-            DistanceDistrictPeriod_df_dict, DemandPeriodsGrouped, con_index_dict, Operating_df, Setup_df)
+            DistanceDistrictPeriod_df_dict, DemandPeriodsGrouped, con_index_dict, Operating_df, Setup_df,
+            DemandPeriodsGrouped_scenarios, DistanceDistrictPeriod_df_scenarios_dict_list)
 
 
  

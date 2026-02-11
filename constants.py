@@ -2,6 +2,9 @@ def get_filepath()->str:
     filepath = "CaseStudyDataPY"
     return filepath
 
+def number_of_scenarios_to_use():
+    return 2
+
 # =============================================================================
 # Vehicle-related data
 # Vehicles are indexed as:

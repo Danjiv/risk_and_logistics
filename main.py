@@ -6,13 +6,15 @@ import zipfile
 import preprocessing 
 import postprocessing
 import MECWLP_model
-from constants import VehicleCapacity, VehicleCO2PerMileAndTonne, VehicleCostPerMileAndTonneOverall, VehicleCostPerMileOverall
+import SCENARIOS_model
+import constants
 import transforms
 
 #read in input data and group customer demand and adjust distances between candidates and customers accordingly
 (Suppliers_df, Candidates_df, DemandPeriods_df, DemandPeriodsScenarios_df, DistanceSupplierDistrict_df,
   DistanceDistrictPeriod_df_dict, DemandPeriodsGrouped, con_index_dict, Operating_df,
-    Setup_df) = preprocessing.read_input_data_and_preprocess()
+    Setup_df, DemandPeriodsGrouped_scenarios, DistanceDistrictPeriod_df_scenarios_dict_list
+    ) = preprocessing.read_input_data_and_preprocess()
 
 # Maximum supplier index (assumed to be integer-indexed)
 nbSuppliers = Suppliers_df.index.max()
@@ -38,16 +40,28 @@ Scenarios = range(1, nbScenarios + 1)
 # Transport cost calculations
 # =============================================================================
 CostSupplierCandidate = transforms.get_CostSupplierCandidate(DistanceSupplierDistrict_df,Suppliers_df,
-                                                             VehicleCostPerMileAndTonneOverall,
+                                                             constants.VehicleCostPerMileAndTonneOverall,
                                                              Candidates, Suppliers)
 CostCandidateCustomers = transforms.get_CostCandidateCustomers(DistanceDistrictPeriod_df_dict,
-                                                               VehicleCostPerMileAndTonneOverall,
+                                                               constants.VehicleCostPerMileAndTonneOverall,
                                                                Candidates, Customers, Times)
+CostCandidateCustomers_scenarios = []
+for i in range(constants.number_of_scenarios_to_use()):
+    CostCandidateCustomers_scenarios.append(transforms.get_CostCandidateCustomers(DistanceDistrictPeriod_df_scenarios_dict_list[i],
+                                                               constants.VehicleCostPerMileAndTonneOverall,
+                                                               Candidates, Customers, Times))
 
 #Formulate & solve the MECWLP model
-prob = MECWLP_model.MECWLP_model(Candidates, Times, Suppliers, Products,Customers,
-                                 Operating_df, Setup_df, CostSupplierCandidate,
-                                 DemandPeriodsGrouped, CostCandidateCustomers,
-                                 Suppliers_df, Candidates_df)
+#MECWLP_model.MECWLP_model(Candidates, Times, Suppliers, Products,Customers,
+#                          Operating_df, Setup_df, CostSupplierCandidate,
+#                          DemandPeriodsGrouped, CostCandidateCustomers,
+#                          Suppliers_df, Candidates_df)
+
+SCENARIOS_model.SCENARIOS_model(Candidates, Times, Suppliers, Products,Customers, Scenarios,
+                                Operating_df, Setup_df, CostSupplierCandidate,
+                                DemandPeriodsGrouped_scenarios, CostCandidateCustomers_scenarios,
+                                Suppliers_df, Candidates_df)
+
+
 
 print("ok!")
