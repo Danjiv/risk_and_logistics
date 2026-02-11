@@ -2,6 +2,14 @@ import pandas as pd
 from typing import Tuple
 
 def get_constituency(PostcodeDistricts: pd.DataFrame) -> Tuple[pd.DataFrame, dict]:
+    """
+    Purpose of the function is to read in a cut of ONS' postcode directory for the UK
+    and match on the westminster constituency that all of the postcode districts belong to
+    Additionally, we return a dictionary containing the indices for columns in the distance
+    matrixes which correspond to postcode districts in that constituency, to be used later
+    to create a, weighted by demand in each district, distance figure for each potential
+    warehouse location to each relevant constituency.    
+    """
     pc_lookup = pd.read_csv("pcd_pcon_uk_lu_may_24_cut.csv")
     pc_lookup["pcd"] = pc_lookup["pcd"].str.replace(" ", "")
 
@@ -22,6 +30,12 @@ def get_constituency(PostcodeDistricts: pd.DataFrame) -> Tuple[pd.DataFrame, dic
 
 
 def get_clustered_demand(DemandPeriods_df: pd.DataFrame, PostcodeDistricts_constituency: pd.DataFrame)->Tuple[dict, dict]:
+    """
+    Purpose of the function is to group demand for each postcode district in a given constituency,
+    for product and period.
+    Moreover, we return the demand periods dataframe with a column to indicate proportion of total demand for the 
+    constituency heading to a specific postcode district in each time period, summed over product type.
+    """
 
     DemandPeriods_df = pd.merge(DemandPeriods_df, PostcodeDistricts_constituency[["District ID", "Constituency"]],
                                 how="left", left_on="Customer", right_on="District ID")
@@ -56,6 +70,13 @@ def get_clustered_demand(DemandPeriods_df: pd.DataFrame, PostcodeDistricts_const
 def get_clustered_distance_weighted_by_demand(DistanceDistrictDistrict_df: pd.DataFrame,
                                               DemandPeriods_df: pd.DataFrame,
                                               con_index_dict: dict)->dict:
+    """
+    Purpose of the function is to create a distance value from each potential warehouse location
+    to each relevant parliamentary constituency, for each time period.
+    TO do this, for each potential warehouse location, we sum the weighted distance of each postcode district
+    in the constituency to the potential warehouse location, weighted by its proportion of total constituency demand,
+    in each time period.
+    """
     
     con_distances = {constituency: DistanceDistrictDistrict_df[[i + 1 for i in constituency_indices]] 
                      for constituency, constituency_indices in con_index_dict.items()}

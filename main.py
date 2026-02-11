@@ -4,6 +4,7 @@ import xpress as xp
 import os
 import zipfile
 import preprocessing 
+import postprocessing
 
 data_dir = "CaseStudyDataPY"
 
@@ -88,23 +89,11 @@ DemandPeriodsScenarios = (
 # Number of scenarios
 nbScenarios = DemandPeriodsScenarios_df["Scenario"].max()
 
-#print(list(DistanceDistrictPeriod_df_dict.keys())[0:3])
-#print(DistanceDistrictPeriod_df_dict[("Aberdeen South", 1)].head())
-#print(DistanceDistrictPeriod_df_dict[("Aberdeen South", 2)].head())
-
-#DistanceDistrictPeriod_df_list[0]["Aberdeen South"].to_csv("check_distances.csv")
-
-#PostcodeDistricts[PostcodeDistricts["Constituency"]=="Aberdeen South"].to_csv("working.csv")
-#PostcodeDistricts.to_csv("working.csv")
-#print(constituency_index_dict["Aberdeen North"])
-#in each constituency, just take the postcode district with min distance to all other postcode districts!!
-
 # =============================================================================
 # Index sets
 # =============================================================================
 Customers  = list(con_index_dict.keys())
 Candidates = Candidates_df.index
-#print(Candidates[0:10])
 Suppliers  = Suppliers_df.index
 Products = range(1, DemandPeriods_df["Product"].max() + 1)
 
@@ -172,7 +161,6 @@ CostSupplierCandidate = {
     for k in Suppliers
 }
 
-#print(DistanceDistrictPeriod_df_dict.get((i, t))[j])
 # Cost from candidate facilities to customers
 # All transports use 3.5t vans (vehicle type 3)
 CostCandidateCustomers = {
@@ -230,8 +218,10 @@ prob.setObjective(xp.Sum(open[c-1,t-1]*Operating_df["Operating cost"][c-1] for c
 # Constraints
 # ========================================================================================================
 # warehouses can only be built in one time period
-prob.addConstraint(xp.Sum(build[c-1, t-1] for t in Times) == 1 for c in Candidates)
-# Warehouse remains open from the year it's built' onwards
+prob.addConstraint(xp.Sum(build[c-1, t-1] for t in Times) <= 1 for c in Candidates)
+# warehouse cannot be open if it's not been built
+prob.addConstraint(open[c-1, t-1] <= xp.Sum(build[c-1, t2] for t2 in range(t-1)) for c in Candidates for t in Times if t != 1)
+# Warehouse remains open from the year it's built onwards
 prob.addConstraint(open[c-1, t-1] >= build[c-1, t-1] for c in Candidates for t in Times)
 prob.addConstraint(open[c-1, t-1] >= open[c-1, t-2] for c in Candidates for t in Times if t != 1)
 prob.addConstraint(open[c-1, 0] == build[c-1, 0] for c in Candidates)
@@ -255,63 +245,41 @@ prob.addConstraint(xp.Sum(delivered[c-1, k, p-1, t-1] for k in range(len(Custome
                    for c in Candidates for p in Products for t in Times)
 
 
-# To turn on and off the solver log
-#xp.setOutputEnabled(True)
-#prob.write("problem","lp")
-
 xp.setOutputEnabled(False)
 prob.solve()
 print(f'The objective function value is {prob.attributes.objval}')
+
+
+#print and save some summary stats
+#the period when warehouses get built/opened is saved off into
+#the csv's build.csv and open.csv, respectively.
 
 operating_costs = 0
 building_costs = 0
 supply_costs = 0
 delivery_costs = 0
-open = prob.getsolution(open)
-build = prob.getsolution(build)
-supply = prob.getsolution(supply)
-delivery = prob.getsolution(delivered)
+open = prob.getSolution(open)
+build = prob.getSolution(build)
+supply = prob.getSolution(supply)
+delivery = prob.getSolution(delivered)
 for c in Candidates:
     for t in Times:
         operating_costs = operating_costs + open[c-1,t-1]*Operating_df["Operating cost"][c-1]
         building_costs = building_costs + build[c-1, t-1]*Setup_df["Setup cost"][c-1]
-        for s in Suppliers:
-            supply_costs = supply_costs + supply[c-1, s-1, t-1]*CostSupplierCandidate[(s, c)]
-        for k in range(len(Customers)):
-            for p in Products:
-                delivery_costs = delivery_costs + delivered[c-1, k, p-1, t-1]*CostCandidateCustomers[(c, Customers[k], t)]
+
+build_df = pd.DataFrame(data = build, index = Candidates, columns = Times)
+build_df = build_df[build_df.sum(axis=1) > 0]
+open_df = pd.DataFrame(data = open, index = Candidates, columns = Times)
+open_df = open_df[open_df.sum(axis=1)>0]
+
+
+build_df.to_csv("build.csv")
+open_df.to_csv("open.csv")
 
 print(f"operating costs: {operating_costs}")
 print(f"building costs: {building_costs}")
-print(f"supply costs: {supply_costs}")
-print(f"delivery costs: {delivery_costs}")
 
-
-# =============================================================================
-# Post-processing and data visualisation
-# =============================================================================
-
-sol_status = prob.attributes.solstatus
-
-if sol_status == xp.SolStatus.OPTIMAL:
-    print("Optimal solution found")
-    best_obj = prob.attributes.objval
-    best_bound = prob.attributes.bestbound
-    mip_gap = abs(best_obj - best_bound) / (1e-10 +abs(best_obj))
-    print(f"MIP Gap: {mip_gap*100:.2f}%")
-    
-elif sol_status == xp.SolStatus.FEASIBLE:
-    print("Feasible solution (not proven optimal)")
-    best_obj = prob.attributes.objval
-    best_bound = prob.attributes.bestbound
-    mip_gap = abs(best_obj - best_bound) / (1e-10 +abs(best_obj))
-    print(f"MIP Gap: {mip_gap*100:.2f}%")
-elif sol_status == xp.SolStatus.INFEASIBLE:
-    print("Model is infeasible")
-elif sol_status == xp.SolStatus.UNBOUNDED:
-    print("Model is unbounded")
-else:
-    print("No solution available")
+postprocessing.postprocessing(prob)
 
 
 print("ok!")
