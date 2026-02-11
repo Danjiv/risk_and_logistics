@@ -198,7 +198,7 @@ warehoused = np.array([prob.addVariable(name='warehoused_{0}_{1}_{2}'.format(c, 
                        for c in Candidates for p in Products for t in Times],dtype=xp.npvar).reshape(
                            len(Candidates), len(Products), len(Times)
                        )
-delivered = np.array([prob.addVariable(name='delivered_{0}_{1}_{2}_{3}'.format(c, Customers[k], p, t), vartype=xp.integer)
+delivered = np.array([prob.addVariable(name='delivered_{0}_{1}_{2}_{3}'.format(c, Customers[k], p, t), vartype=xp.continuous, ub = 1)
                        for c in Candidates for k in range(len(Customers)) for p in Products for t in Times],dtype=xp.npvar).reshape(
                            len(Candidates), len(Customers), len(Products), len(Times)
                        )
@@ -210,7 +210,7 @@ delivered = np.array([prob.addVariable(name='delivered_{0}_{1}_{2}_{3}'.format(c
 prob.setObjective(xp.Sum(open[c-1,t-1]*Operating_df["Operating cost"][c-1] for c in Candidates for t in Times) +
                   xp.Sum(build[c-1, t-1]*Setup_df["Setup cost"][c-1] for c in Candidates for t in Times) +
                   xp.Sum(supply[c-1, s-1, t-1]*CostSupplierCandidate[(s, c)] for c in Candidates for s in Suppliers for t in Times) +
-                  xp.Sum(delivered[c-1, k, p-1, t-1]*CostCandidateCustomers[(c, Customers[k], t)] 
+                  xp.Sum(delivered[c-1, k, p-1, t-1]*DemandPeriodsGrouped[Customers[k], p, t]*CostCandidateCustomers[(c, Customers[k], t)] 
                          for c in Candidates for k in range(len(Customers)) for p in Products for t in Times), 
                   sense = xp.minimize)
 
@@ -238,14 +238,17 @@ prob.addConstraint(xp.Sum(warehoused[c-1, p-1, t-1] for p in Products) <= Candid
                    for c in Candidates for t in Times)
 #delivery constraints
 #ensure we meed customer demand
-prob.addConstraint(xp.Sum(delivered[c-1, k, p-1, t-1] for c in Candidates) >= DemandPeriodsGrouped[Customers[k], p, t]
+#prob.addConstraint(xp.Sum(delivered[c-1, k, p-1, t-1] for c in Candidates) >= DemandPeriodsGrouped[Customers[k], p, t]
+#                   for k in range(len(Customers)) for p in Products for t in Times)
+prob.addConstraint(xp.Sum(delivered[c-1, k, p-1, t-1] for c in Candidates)==1
                    for k in range(len(Customers)) for p in Products for t in Times)
 #can't deliver more than the warehouses hold
-prob.addConstraint(xp.Sum(delivered[c-1, k, p-1, t-1] for k in range(len(Customers))) <= warehoused[c-1, p-1, t-1]
+prob.addConstraint(xp.Sum(delivered[c-1, k, p-1, t-1]*DemandPeriodsGrouped[Customers[k], p, t]
+                           for k in range(len(Customers))) <= warehoused[c-1, p-1, t-1]
                    for c in Candidates for p in Products for t in Times)
 
 
-xp.setOutputEnabled(False)
+xp.setOutputEnabled(True)
 prob.solve()
 print(f'The objective function value is {prob.attributes.objval}')
 
