@@ -1,5 +1,6 @@
 import pandas as pd
 from typing import Tuple
+import constants
 
 def get_constituency(PostcodeDistricts: pd.DataFrame) -> Tuple[pd.DataFrame, dict]:
     """
@@ -16,6 +17,11 @@ def get_constituency(PostcodeDistricts: pd.DataFrame) -> Tuple[pd.DataFrame, dic
     pc_dict = {postcode: constituency for postcode, constituency in zip(pc_lookup["pcd"], pc_lookup["pconnm"])}
 
     PostcodeDistricts["Constituency"] = PostcodeDistricts["Reference PC"].map(pc_dict)
+
+    #PostcodeDistricts.to_csv("heynow.csv")
+    #hi = PostcodeDistricts.groupby("Constituency")['Population'].sum()
+    #hi.to_csv("wowtcha.csv")
+    #wotcha = cool
 
     constituency_set = set(PostcodeDistricts["Constituency"].tolist())
 
@@ -96,6 +102,86 @@ def get_clustered_distance_weighted_by_demand(DistanceDistrictDistrict_df: pd.Da
             weights = DemandPeriods_df_year_ct["DemandProportion"].to_numpy()
             weighted_con_distance_dict[(con, p)] = pd.Series(con_distances_array.dot(weights))
 
-    return weighted_con_distance_dict   
+    return weighted_con_distance_dict  
+
+
+def read_input_data_and_preprocess():
+    """
+    Read in all relevant input data, group demand and distances between candidates + customers
+    """
+    data_dir = constants.get_filepath()
+    
+    # -----------------------------------------------------------------------------
+    # Read supplier data
+    # The first column is used as the supplier index
+    # -----------------------------------------------------------------------------
+    Suppliers_df = pd.read_csv(f"{data_dir}/Suppliers.csv", index_col=0)
+    Vehicle_df = pd.read_csv(f"{data_dir}/vehicleType.csv", index_col=0)
+    # -----------------------------------------------------------------------------
+    # Read postcode district data (used to define customers)
+    # Group postcode demand data by westminster parliamentary constituency
+    PostcodeDistricts = pd.read_csv(f"{data_dir}/PostcodeDistricts.csv")
+    PostcodeDistricts_constituency, con_index_dict  = get_constituency(PostcodeDistricts)
+
+
+    # Read demand data with time periods
+    # Creates a dictionary keyed by (Customer, Product, Period)
+
+    DemandPeriods_df = pd.read_csv(f"{data_dir}/DemandPeriods.csv")
+
+    DemandPeriodsGrouped, DemandPeriodsProportion = get_clustered_demand(DemandPeriods_df, PostcodeDistricts_constituency)
+
+    # -----------------------------------------------------------------------------
+    # Read candidate facility data
+    # -----------------------------------------------------------------------------
+    Candidates_df = pd.read_csv(f"{data_dir}/Candidates.csv", index_col=0)
+
+    # -----------------------------------------------------------------------------
+    # Read candidate capacity and setup operating costs data
+
+    Capacity_df = pd.read_csv(f"{data_dir}/Capacity.csv")
+    Setup_df = pd.read_csv(f"{data_dir}/Setup.csv")
+    Operating_df = pd.read_csv(f"{data_dir}/Operating.csv")
+
+    # -----------------------------------------------------------------------------
+    # Read distance matrices
+    # Supplier → District distances
+    # District → District distances
+    # -----------------------------------------------------------------------------
+
+    DistanceSupplierDistrict_df = pd.read_csv(
+        f"{data_dir}/Distance Supplier-District.csv", index_col=0
+    )
+    DistanceSupplierDistrict_df.columns = DistanceSupplierDistrict_df.columns.astype(int)
+
+    #Adjust distance based on grouping by parliamentary constituency,
+    #weighted by proportion of total demand in each constituency by demand in each
+    # individual postcode district, for each period
+
+    DistanceDistrictDistrict_df = pd.read_csv(
+        f"{data_dir}/Distance District-District.csv", index_col=0
+    )
+    DistanceDistrictDistrict_df.columns = DistanceDistrictDistrict_df.columns.astype(int)
+
+    DistanceDistrictPeriod_df_dict = get_clustered_distance_weighted_by_demand(DistanceDistrictDistrict_df,
+                                                                               DemandPeriodsProportion,
+                                                                               con_index_dict)
+    
+    # -----------------------------------------------------------------------------
+    # Read demand data with time periods and scenarios
+    # Creates a dictionary keyed by (Customer, Product, Period, Scenario)
+    # -----------------------------------------------------------------------------
+    DemandPeriodsScenarios_df = pd.read_csv(f"{data_dir}/DemandPeriodScenarios.csv")
+    DemandPeriodsScenarios = (
+        DemandPeriodsScenarios_df
+            .set_index(["Customer", "Product", "Period", "Scenario"])["Demand"]
+            .to_dict()
+    )
+
+    return (Suppliers_df, Candidates_df, DemandPeriods_df, DemandPeriodsScenarios_df, DistanceSupplierDistrict_df,
+            DistanceDistrictPeriod_df_dict, DemandPeriodsGrouped, con_index_dict, Operating_df, Setup_df)
+
+
+ 
 
 
