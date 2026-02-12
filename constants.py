@@ -3,7 +3,7 @@ def get_filepath()->str:
     return filepath
 
 def number_of_scenarios_to_use():
-    return 2
+    return 1
 
 # =============================================================================
 # Vehicle-related data

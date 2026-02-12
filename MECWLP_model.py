@@ -6,7 +6,7 @@ import pandas as pd
 def MECWLP_model(Candidates, Times, Suppliers, Products,Customers,
                  Operating_df, Setup_df, CostSupplierCandidate,
                  DemandPeriodsGrouped, CostCandidateCustomers,
-                 Suppliers_df, Candidates_df):
+                 Suppliers_df, Candidates_df, TotalDemandProductPeriod_dict):
     # =============================================================================
     # Build optimization model
     # =============================================================================
@@ -24,11 +24,11 @@ def MECWLP_model(Candidates, Times, Suppliers, Products,Customers,
     open = np.array([prob.addVariable(name='open_{0}_{1}'.format(c, t), vartype=xp.binary)
                     for c in Candidates for t in Times], dtype=xp.npvar).reshape(len(Candidates), len(Times))
 
-    supply = np.array([prob.addVariable(name='supply_{0}_{1}_{2}'.format(c, s, t), vartype=xp.integer)
+    supply = np.array([prob.addVariable(name='supply_{0}_{1}_{2}'.format(c, s, t), vartype=xp.continuous, ub = 1)
                     for c in Candidates for s in Suppliers for t in Times], dtype=xp.npvar).reshape(
                         len(Candidates), len(Suppliers), len(Times))
 
-    warehoused = np.array([prob.addVariable(name='warehoused_{0}_{1}_{2}'.format(c, p, t), vartype=xp.integer)
+    warehoused = np.array([prob.addVariable(name='warehoused_{0}_{1}_{2}'.format(c, p, t), vartype=xp.continuous)
                         for c in Candidates for p in Products for t in Times],dtype=xp.npvar).reshape(
                             len(Candidates), len(Products), len(Times)
                         )
@@ -43,7 +43,8 @@ def MECWLP_model(Candidates, Times, Suppliers, Products,Customers,
     # Need to factor in the fixed costs related to the number of vans you have to send!!!!!
     prob.setObjective(xp.Sum(open[c-1,t-1]*Operating_df["Operating cost"][c-1] for c in Candidates for t in Times) +
                     xp.Sum(build[c-1, t-1]*Setup_df["Setup cost"][c-1] for c in Candidates for t in Times) +
-                    xp.Sum(supply[c-1, s-1, t-1]*CostSupplierCandidate[(s, c)] for c in Candidates for s in Suppliers for t in Times) +
+                    xp.Sum(supply[c-1, s-1, t-1]*TotalDemandProductPeriod_dict[(Suppliers_df["Product group"][s], t)]*CostSupplierCandidate[(s, c)]
+                            for c in Candidates for s in Suppliers for t in Times) +
                     xp.Sum(delivered[c-1, k, p-1, t-1]*DemandPeriodsGrouped[Customers[k], p, t]*CostCandidateCustomers[(c, Customers[k], t)] 
                             for c in Candidates for k in range(len(Customers)) for p in Products for t in Times), 
                     sense = xp.minimize)
@@ -60,14 +61,27 @@ def MECWLP_model(Candidates, Times, Suppliers, Products,Customers,
     prob.addConstraint(open[c-1, t-1] >= build[c-1, t-1] for c in Candidates for t in Times)
     prob.addConstraint(open[c-1, t-1] >= open[c-1, t-2] for c in Candidates for t in Times if t != 1)
     prob.addConstraint(open[c-1, 0] == build[c-1, 0] for c in Candidates)
-    # supplier constraints - can't supply more than total capacity
-    prob.addConstraint(xp.Sum(supply[c-1, s-1, t-1] for c in Candidates) <= Suppliers_df["Capacity"][s] for s in Suppliers for t in Times)
+    # SUPPLIER CONSTRAINTS
+    # have to supply enough in each time period to meet total demand
+    #prob.addConstraint(xp.Sum(supply[c-1, s-1, t-1]
+    #                          for s in Suppliers if Suppliers_df["Product group"][s]==p
+    #                           for c in Candidates )==1 
+    #                   for p in Products for t in Times) 
+    # can't supply more than total capacity
+    #prob.addConstraint(xp.Sum(supply[c-1, s-1, t-1] for c in Candidates) <= Suppliers_df["Capacity"][s] for s in Suppliers for t in Times)
+    prob.addConstraint(xp.Sum(supply[c-1, s-1, t-1]*TotalDemandProductPeriod_dict[(Suppliers_df["Product group"][s], t)] 
+                              for c in Candidates) <= Suppliers_df["Capacity"][s] for s in Suppliers for t in Times)
+    # No point in supplying more than total product demand in any period
+    prob.addConstraint(xp.Sum(supply[c-1, s-1, t-1]*TotalDemandProductPeriod_dict[(Suppliers_df["Product group"][s], t)] 
+                        for c in Candidates) <= TotalDemandProductPeriod_dict[(Suppliers_df["Product group"][s], t)]
+                          for s in Suppliers for t in Times)
     # update warehouse stock
-    prob.addConstraint(warehoused[c-1, p-1, t-1] == xp.Sum(supply[c-1, s-1, t-1] 
+    prob.addConstraint(warehoused[c-1, p-1, t-1] == xp.Sum(supply[c-1, s-1, t-1]*TotalDemandProductPeriod_dict[(Suppliers_df["Product group"][s], t)] 
                             for s in Suppliers if Suppliers_df["Product group"][s] == p)
                             for c in Candidates for p in Products for t in Times)
-    # Can't carry more stock than max capacity
+    
     prob.addConstraint(xp.Sum(warehoused[c-1, p-1, t-1] for p in Products) <= Candidates_df["Capacity"][c] for c in Candidates for t in Times)
+    # Can't carry more stock than max capacity
     # Can't carry any stock in a warehouse that isn't open
     prob.addConstraint(xp.Sum(warehoused[c-1, p-1, t-1] for p in Products) <= Candidates_df["Capacity"][c]*open[c-1, t-1]
                     for c in Candidates for t in Times)
@@ -97,6 +111,21 @@ def MECWLP_model(Candidates, Times, Suppliers, Products,Customers,
     open = prob.getSolution(open)
     build = prob.getSolution(build)
     supply = prob.getSolution(supply)
+
+    ok = {"candidates": [],
+          "suppliers": [],
+          "product": [],
+          "prop": []}
+    for c in Candidates:
+        for s in Suppliers:
+            ok["candidates"].append(c)
+            ok["suppliers"].append(s)
+            ok["product"].append(Suppliers_df["Product group"][s])
+            ok["prop"].append(supply[c-1, s-1, 9])
+
+    supply_df = pd.DataFrame(ok)
+    supply_df.to_csv("whatNOW.csv")    
+
     delivery = prob.getSolution(delivered)
     for c in Candidates:
         for t in Times:
@@ -104,9 +133,9 @@ def MECWLP_model(Candidates, Times, Suppliers, Products,Customers,
             building_costs = building_costs + build[c-1, t-1]*Setup_df["Setup cost"][c-1]
 
     build_df = pd.DataFrame(data = build, index = Candidates, columns = Times)
-    build_df = build_df[build_df.sum(axis=1) > 0]
+    build_df = build_df[build_df.sum(axis=1) > 0.1]
     open_df = pd.DataFrame(data = open, index = Candidates, columns = Times)
-    open_df = open_df[open_df.sum(axis=1)>0]
+    open_df = open_df[open_df.sum(axis=1)>0.1]
 
 
     build_df.to_csv("build.csv")
