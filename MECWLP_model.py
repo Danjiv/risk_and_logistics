@@ -71,6 +71,10 @@ def MECWLP_model(Candidates, Times, Suppliers, Products,Customers,
     #prob.addConstraint(xp.Sum(supply[c-1, s-1, t-1] for c in Candidates) <= Suppliers_df["Capacity"][s] for s in Suppliers for t in Times)
     prob.addConstraint(xp.Sum(supply[c-1, s-1, t-1]*TotalDemandProductPeriod_dict[(Suppliers_df["Product group"][s], t)] 
                               for c in Candidates) <= Suppliers_df["Capacity"][s] for s in Suppliers for t in Times)
+    # No point in supplying more than total product demand in any period
+    prob.addConstraint(xp.Sum(supply[c-1, s-1, t-1]*TotalDemandProductPeriod_dict[(Suppliers_df["Product group"][s], t)] 
+                        for c in Candidates) <= TotalDemandProductPeriod_dict[(Suppliers_df["Product group"][s], t)]
+                          for s in Suppliers for t in Times)
     # update warehouse stock
     prob.addConstraint(warehoused[c-1, p-1, t-1] == xp.Sum(supply[c-1, s-1, t-1]*TotalDemandProductPeriod_dict[(Suppliers_df["Product group"][s], t)] 
                             for s in Suppliers if Suppliers_df["Product group"][s] == p)
