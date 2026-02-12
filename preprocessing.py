@@ -102,7 +102,19 @@ def get_clustered_distance_weighted_by_demand(DistanceDistrictDistrict_df: pd.Da
             weights = DemandPeriods_df_year_ct["DemandProportion"].to_numpy()
             weighted_con_distance_dict[(con, p)] = pd.Series(con_distances_array.dot(weights))
 
-    return weighted_con_distance_dict  
+    return weighted_con_distance_dict
+
+
+def get_total_demand_per_product_per_period(DemandPeriods_df: pd.DataFrame)->dict:
+        DemandPeriods_total = DemandPeriods_df.groupby(["Product", "Period"])["Demand"].sum()
+        DemandPeriods_total.to_csv("checkgood.csv")
+        DemandPeriodsTotal_dict = (
+        DemandPeriods_total.reset_index()
+            .set_index(["Product", "Period"])["Demand"]
+            .to_dict()
+        )
+
+        return DemandPeriodsTotal_dict
 
 
 def read_input_data_and_preprocess():
@@ -126,8 +138,12 @@ def read_input_data_and_preprocess():
 
     # Read demand data with time periods
     # Creates a dictionary keyed by (Customer, Product, Period)
+    # Roll up total demand for each product for each period
+    # And group demand for each product for each period for each consituency
 
     DemandPeriods_df = pd.read_csv(f"{data_dir}/DemandPeriods.csv")
+
+    TotalDemandProductPeriod_dict = get_total_demand_per_product_per_period(DemandPeriods_df)
 
     DemandPeriodsGrouped, DemandPeriodsProportion = get_clustered_demand(DemandPeriods_df, PostcodeDistricts_constituency)
 
@@ -147,6 +163,12 @@ def read_input_data_and_preprocess():
             DemandPeriodsScenarios_singular_df, PostcodeDistricts_constituency)
         DemandPeriodsGrouped_scenarios.append(DemandPeriodsGrouped_single_scenario)
         DemandPeriodsProportion_scenarios.append(DemandPeriodsProportion_single_scenario)
+
+    TotalDemandProductPeriodScenarios_dict = []
+    for i in range(constants.number_of_scenarios_to_use()):
+        DemandPeriodsScenarios_singular_df = DemandPeriodsScenarios_df[DemandPeriodsScenarios_df["Scenario"]==i+1]
+        TotalDemandProductPeriodSingleScenario = get_total_demand_per_product_per_period(DemandPeriodsScenarios_singular_df)
+        TotalDemandProductPeriodScenarios_dict.append(TotalDemandProductPeriodSingleScenario)
  
     # Group postcode demand data by westminster parliamentary constituency for each scenario
 
@@ -200,7 +222,8 @@ def read_input_data_and_preprocess():
 
     return (Suppliers_df, Candidates_df, DemandPeriods_df, DemandPeriodsScenarios_df, DistanceSupplierDistrict_df,
             DistanceDistrictPeriod_df_dict, DemandPeriodsGrouped, con_index_dict, Operating_df, Setup_df,
-            DemandPeriodsGrouped_scenarios, DistanceDistrictPeriod_df_scenarios_dict_list)
+            DemandPeriodsGrouped_scenarios, DistanceDistrictPeriod_df_scenarios_dict_list,
+            TotalDemandProductPeriod_dict, TotalDemandProductPeriodScenarios_dict)
 
 
  

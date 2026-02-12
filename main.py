@@ -13,8 +13,8 @@ import transforms
 #read in input data and group customer demand and adjust distances between candidates and customers accordingly
 (Suppliers_df, Candidates_df, DemandPeriods_df, DemandPeriodsScenarios_df, DistanceSupplierDistrict_df,
   DistanceDistrictPeriod_df_dict, DemandPeriodsGrouped, con_index_dict, Operating_df,
-    Setup_df, DemandPeriodsGrouped_scenarios, DistanceDistrictPeriod_df_scenarios_dict_list
-    ) = preprocessing.read_input_data_and_preprocess()
+    Setup_df, DemandPeriodsGrouped_scenarios, DistanceDistrictPeriod_df_scenarios_dict_list,
+    TotalDemandProductPeriod_dict, TotalDemandProductPeriodScenarios_dict) = preprocessing.read_input_data_and_preprocess()
 
 # Maximum supplier index (assumed to be integer-indexed)
 nbSuppliers = Suppliers_df.index.max()
@@ -52,15 +52,16 @@ for i in range(constants.number_of_scenarios_to_use()):
                                                                Candidates, Customers, Times))
 
 #Formulate & solve the MECWLP model
-#MECWLP_model.MECWLP_model(Candidates, Times, Suppliers, Products,Customers,
-#                          Operating_df, Setup_df, CostSupplierCandidate,
-#                          DemandPeriodsGrouped, CostCandidateCustomers,
-#                          Suppliers_df, Candidates_df)
+MECWLP_model.MECWLP_model(Candidates, Times, Suppliers, Products,Customers,
+                          Operating_df, Setup_df, CostSupplierCandidate,
+                          DemandPeriodsGrouped, CostCandidateCustomers,
+                          Suppliers_df, Candidates_df, TotalDemandProductPeriod_dict)
 
-SCENARIOS_model.SCENARIOS_model(Candidates, Times, Suppliers, Products,Customers, Scenarios,
-                                Operating_df, Setup_df, CostSupplierCandidate,
-                                DemandPeriodsGrouped_scenarios, CostCandidateCustomers_scenarios,
-                                Suppliers_df, Candidates_df)
+#Formulate & solve the Scenarios model
+#SCENARIOS_model.SCENARIOS_model(Candidates, Times, Suppliers, Products,Customers, Scenarios,
+#                                Operating_df, Setup_df, CostSupplierCandidate,
+#                                DemandPeriodsGrouped_scenarios, CostCandidateCustomers_scenarios,
+#                                Suppliers_df, Candidates_df, TotalDemandProductPeriodScenarios_dict)
 
 
 
