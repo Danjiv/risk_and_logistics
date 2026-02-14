@@ -10,6 +10,11 @@ import SCENARIOS_model
 import constants
 import transforms
 
+#==================================================================================================================
+# To set model parameters, such as method of clustering to use, how many clusters to use, how many scenarios to use
+# Update the values in constants.py
+#==================================================================================================================
+
 #read in input data and group customer demand and adjust distances between candidates and customers accordingly
 (Suppliers_df, Candidates_df, DemandPeriods_df, DemandPeriodsScenarios_df, DistanceSupplierDistrict_df,
   DistanceDistrictPeriod_df_dict, DemandPeriodsGrouped, con_index_dict, Operating_df,
@@ -58,6 +63,7 @@ MECWLP_model.MECWLP_model(Candidates, Times, Suppliers, Products,Customers,
                           Suppliers_df, Candidates_df, TotalDemandProductPeriod_dict)
 
 #Formulate & solve the Scenarios model
+#print(f"Number of Scenarios to run: {len(Scenarios)}")
 #SCENARIOS_model.SCENARIOS_model(Candidates, Times, Suppliers, Products,Customers, Scenarios,
 #                                Operating_df, Setup_df, CostSupplierCandidate,
 #                                DemandPeriodsGrouped_scenarios, CostCandidateCustomers_scenarios,

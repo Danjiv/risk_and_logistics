@@ -5,6 +5,18 @@ def get_filepath()->str:
 def number_of_scenarios_to_use():
     return 1
 
+
+def cluster_size():
+    return 10
+
+def clustertype():
+    """
+    return 'parliament' if you want to cluster demand by westminster parliamentary constituency
+    return kmeans{cluster_size()} if you'd like to cluster demand, k being set by the cluster size function above
+    """
+    #return "parliament"
+    return f"kmeans{cluster_size()}"
+
 # =============================================================================
 # Vehicle-related data
 # Vehicles are indexed as:
