@@ -2,6 +2,7 @@ import xpress as xp
 import numpy as np
 import postprocessing
 import pandas as pd
+import constants
 
 def SCENARIOS_model(Candidates, Times, Suppliers, Products,Customers, Scenarios,
                  Operating_df, Setup_df, CostSupplierCandidate,
@@ -13,7 +14,7 @@ def SCENARIOS_model(Candidates, Times, Suppliers, Products,Customers, Scenarios,
     prob = xp.problem("SCENARIOS")
 
     xp.setOutputEnabled(True)
-    prob.controls.maxtime = -300
+    #prob.controls.maxtime = -300
     # =============================================================================
     # Declarations
     # =============================================================================
@@ -131,8 +132,13 @@ def SCENARIOS_model(Candidates, Times, Suppliers, Products,Customers, Scenarios,
     open_df = open_df[open_df.sum(axis=1)>0]
 
 
-    build_df.to_csv("build_scenarios.csv")
-    open_df.to_csv("open_scenarios.csv")
+    build_df.to_csv(f"build_{constants.clustertype()}_scenarios{len(Scenarios)}.csv")
+    open_df.to_csv(f"open_{constants.clustertype()}_scenarios_{len(Scenarios)}.csv")
+    vals = pd.DataFrame({"number_of_scenarios": [len(Scenarios)],
+                        "obj_val": [prob.attributes.objval],
+                        "operating_costs": [operating_costs],
+                        "building_costs": [building_costs]})
+    vals.to_csv(f"model_stats_{constants.clustertype()}_scenarios{len(Scenarios)}.csv")
 
     print(f"operating costs scenarios: {operating_costs}")
     print(f"building costs scenarios: {building_costs}")

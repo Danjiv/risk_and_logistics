@@ -1,31 +1,43 @@
 import pandas as pd
 from typing import Tuple
 import constants
+from sklearn.cluster import KMeans
+import numpy as np
 
 def get_constituency(PostcodeDistricts: pd.DataFrame) -> Tuple[pd.DataFrame, dict]:
     """
-    Purpose of the function is to read in a cut of ONS' postcode directory for the UK
-    and match on the westminster constituency that all of the postcode districts belong to
+    Purpose of the function is to cluster customers into a 'constituency' which
+    can then be used to group demand
+
+    we allow two different methods to do this, set by constants.cluster_type():
+
+    1. Read in a cut of ONS' postcode directory for the UK and match on the westminster constituency
+      that all of the postcode districts belong to
+    2. Cluster customers using kmeans, k being set by constants.cluster_size()
+
     Additionally, we return a dictionary containing the indices for columns in the distance
     matrixes which correspond to postcode districts in that constituency, to be used later
     to create a, weighted by demand in each district, distance figure for each potential
     warehouse location to each relevant constituency.    
     """
-    pc_lookup = pd.read_csv("pcd_pcon_uk_lu_may_24_cut.csv")
-    pc_lookup["pcd"] = pc_lookup["pcd"].str.replace(" ", "")
 
-    pc_dict = {postcode: constituency for postcode, constituency in zip(pc_lookup["pcd"], pc_lookup["pconnm"])}
+    print(f"Clustering customers by using method: {constants.clustertype()}")
 
-    PostcodeDistricts["Constituency"] = PostcodeDistricts["Reference PC"].map(pc_dict)
+    if constants.clustertype() =="parliament":
+        pc_lookup = pd.read_csv("pcd_pcon_uk_lu_may_24_cut.csv")
+        pc_lookup["pcd"] = pc_lookup["pcd"].str.replace(" ", "")
 
-    #PostcodeDistricts.to_csv("heynow.csv")
-    #hi = PostcodeDistricts.groupby("Constituency")['Population'].sum()
-    #hi.to_csv("wowtcha.csv")
-    #wotcha = cool
+        pc_dict = {postcode: constituency for postcode, constituency in zip(pc_lookup["pcd"], pc_lookup["pconnm"])}
+
+        PostcodeDistricts["Constituency"] = PostcodeDistricts["Reference PC"].map(pc_dict)
+
+    else:
+        clustering_prep = [[PostcodeDistricts["X (Easting)"][i], PostcodeDistricts["Y (Northing)"][i]] for i in range(PostcodeDistricts.shape[0])]
+        #print(clustering_prep[0])        
+        clusters = KMeans(n_clusters=constants.cluster_size(), random_state=1815, n_init="auto").fit(np.array(clustering_prep))
+        PostcodeDistricts["Constituency"] = clusters.labels_
 
     constituency_set = set(PostcodeDistricts["Constituency"].tolist())
-
-    print(f"number of consitutencies  {len(constituency_set)}")
 
     index_dict = {constituency: list(PostcodeDistricts[PostcodeDistricts["Constituency"]==constituency].index)
                   for constituency in constituency_set
@@ -78,7 +90,7 @@ def get_clustered_distance_weighted_by_demand(DistanceDistrictDistrict_df: pd.Da
                                               con_index_dict: dict)->dict:
     """
     Purpose of the function is to create a distance value from each potential warehouse location
-    to each relevant parliamentary constituency, for each time period.
+    to each relevant constituency, for each time period.
     TO do this, for each potential warehouse location, we sum the weighted distance of each postcode district
     in the constituency to the potential warehouse location, weighted by its proportion of total constituency demand,
     in each time period.
@@ -107,7 +119,7 @@ def get_clustered_distance_weighted_by_demand(DistanceDistrictDistrict_df: pd.Da
 
 def get_total_demand_per_product_per_period(DemandPeriods_df: pd.DataFrame)->dict:
         DemandPeriods_total = DemandPeriods_df.groupby(["Product", "Period"])["Demand"].sum()
-        DemandPeriods_total.to_csv("checkgood.csv")
+      #  DemandPeriods_total.to_csv("checkgood.csv")
         DemandPeriodsTotal_dict = (
         DemandPeriods_total.reset_index()
             .set_index(["Product", "Period"])["Demand"]
@@ -154,6 +166,7 @@ def read_input_data_and_preprocess():
     DemandPeriodsScenarios_df = pd.read_csv(f"{data_dir}/DemandPeriodScenarios.csv")
     DemandPeriodsScenarios_df = DemandPeriodsScenarios_df[DemandPeriodsScenarios_df["Scenario"] <= constants.number_of_scenarios_to_use()]
 
+    # Group postcode demand data by  parliamentary constituency for each scenario
     DemandPeriodsGrouped_scenarios = []
     DemandPeriodsProportion_scenarios = []
     for i in range(constants.number_of_scenarios_to_use()):
@@ -170,7 +183,7 @@ def read_input_data_and_preprocess():
         TotalDemandProductPeriodSingleScenario = get_total_demand_per_product_per_period(DemandPeriodsScenarios_singular_df)
         TotalDemandProductPeriodScenarios_dict.append(TotalDemandProductPeriodSingleScenario)
  
-    # Group postcode demand data by westminster parliamentary constituency for each scenario
+  
 
 
 

@@ -2,6 +2,7 @@ import xpress as xp
 import numpy as np
 import postprocessing
 import pandas as pd
+import constants
 
 def MECWLP_model(Candidates, Times, Suppliers, Products,Customers,
                  Operating_df, Setup_df, CostSupplierCandidate,
@@ -12,8 +13,8 @@ def MECWLP_model(Candidates, Times, Suppliers, Products,Customers,
     # =============================================================================
     prob = xp.problem("MECWLP")
 
-    xp.setOutputEnabled(False)
-    prob.controls.maxtime = -300
+    xp.setOutputEnabled(True)
+    #prob.controls.maxtime = -300
     # =============================================================================
     # Declarations
     # =============================================================================
@@ -118,21 +119,6 @@ def MECWLP_model(Candidates, Times, Suppliers, Products,Customers,
     open = prob.getSolution(open)
     build = prob.getSolution(build)
     supply = prob.getSolution(supply)
-
-    ok = {"candidates": [],
-          "suppliers": [],
-          "product": [],
-          "prop": []}
-    for c in Candidates:
-        for s in Suppliers:
-            ok["candidates"].append(c)
-            ok["suppliers"].append(s)
-            ok["product"].append(Suppliers_df["Product group"][s])
-            ok["prop"].append(supply[c-1, s-1, 9])
-
-    supply_df = pd.DataFrame(ok)
-    supply_df.to_csv("whatNOW.csv")    
-
     delivery = prob.getSolution(delivered)
     for c in Candidates:
         for t in Times:
@@ -144,9 +130,12 @@ def MECWLP_model(Candidates, Times, Suppliers, Products,Customers,
     open_df = pd.DataFrame(data = open, index = Candidates, columns = Times)
     open_df = open_df[open_df.sum(axis=1)>0.1]
 
-
-    build_df.to_csv("build.csv")
-    open_df.to_csv("open.csv")
+    build_df.to_csv(f"build_{constants.clustertype()}.csv")
+    open_df.to_csv(f"open_{constants.clustertype()}.csv")
+    vals = pd.DataFrame({"obj_val": [prob.attributes.objval],
+                        "operating_costs": [operating_costs],
+                        "building_costs": [building_costs]})
+    vals.to_csv(f"model_stats_{constants.clustertype()}.csv")
 
     print(f"operating costs: {operating_costs}")
     print(f"building costs: {building_costs}")
