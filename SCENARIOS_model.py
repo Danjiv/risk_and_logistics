@@ -14,13 +14,13 @@ def SCENARIOS_model(Candidates, Times, Suppliers, Products,Customers, Scenarios,
     prob = xp.problem("SCENARIOS")
 
     xp.setOutputEnabled(True)
-    #prob.controls.maxtime = -300
+    prob.controls.maxtime = -3600
     # =============================================================================
     # Declarations
     # =============================================================================
 
-    build = np.array([prob.addVariable(name='build_{0}_{1}'.format(c, t), vartype=xp.binary)
-                    for c in Candidates for t in Times], dtype=xp.npvar).reshape(len(Candidates), len(Times))
+    build = np.array([prob.addVariable(name='build_{0}'.format(c), vartype=xp.binary)
+                    for c in Candidates], dtype=xp.npvar).reshape(len(Candidates))
 
     open = np.array([prob.addVariable(name='open_{0}_{1}'.format(c, t), vartype=xp.binary)
                     for c in Candidates for t in Times], dtype=xp.npvar).reshape(len(Candidates), len(Times))
@@ -42,11 +42,10 @@ def SCENARIOS_model(Candidates, Times, Suppliers, Products,Customers, Scenarios,
     #=========================================================================================================
     # Objective function
     # ========================================================================================================
-    # Need to factor in the fixed costs related to the number of vans you have to send!!!!!
     prob.setObjective(xp.Sum(open[c-1,t-1]*Operating_df["Operating cost"][c-1] for c in Candidates for t in Times) +
-                    xp.Sum(build[c-1, t-1]*Setup_df["Setup cost"][c-1] for c in Candidates for t in Times) +
+                    xp.Sum(build[c-1]*Setup_df["Setup cost"][c-1] for c in Candidates) +
                     (1/len(Scenarios))*xp.Sum(
-                    xp.Sum(supply[c-1, s-1, t-1]*TotalDemandProductPeriodScenarios_dict[sc-1][(Suppliers_df["Product group"][s], t)]*CostSupplierCandidate[(s, c)]
+                    xp.Sum(supply[c-1, s-1, t-1, sc-1]*TotalDemandProductPeriodScenarios_dict[sc-1][(Suppliers_df["Product group"][s], t)]*CostSupplierCandidate[(s, c)]
                             for c in Candidates for s in Suppliers for t in Times for sc in Scenarios) +
                     xp.Sum(delivered[c-1, k, p-1, t-1, sc-1]*DemandPeriodsGrouped[sc-1][Customers[k], p, t]*CostCandidateCustomers[sc-1][(c, Customers[k], t)] 
                             for c in Candidates for k in range(len(Customers)) for p in Products for t in Times for sc in Scenarios)), 
@@ -56,14 +55,9 @@ def SCENARIOS_model(Candidates, Times, Suppliers, Products,Customers, Scenarios,
     # Constraints
     # ========================================================================================================
     # warehouses can only be built in one time period
-    prob.addConstraint(xp.Sum(build[c-1, t-1] for t in Times) <= 1 for c in Candidates)
-    # warehouse cannot be open if it's not been built
-    # not sure this constraint is working as intended!!!!!!
-    prob.addConstraint(open[c-1, t-1] <= xp.Sum(build[c-1, t2] for t2 in range(t-1)) for c in Candidates for t in Times if t != 1)
     # Warehouse remains open from the year it's built onwards
-    prob.addConstraint(open[c-1, t-1] >= build[c-1, t-1] for c in Candidates for t in Times)
+    prob.addConstraint(xp.Sum(open[c-1, t-1] for t in Times) <= len(Times)*build[c-1] for c in Candidates)
     prob.addConstraint(open[c-1, t-1] >= open[c-1, t-2] for c in Candidates for t in Times if t != 1)
-    prob.addConstraint(open[c-1, 0] == build[c-1, 0] for c in Candidates)
     # SUPPLIER CONSTRAINTS
     # Can't supply to a warehouse that is not open.
     prob.addConstraint(supply[c-1, s-1, t-1, sc-1] <= open[c-1, t-1]
@@ -89,8 +83,8 @@ def SCENARIOS_model(Candidates, Times, Suppliers, Products,Customers, Scenarios,
     prob.addConstraint(xp.Sum(warehoused[c-1, p-1, t-1, sc-1] for p in Products) <= Candidates_df["Capacity"][c]
                         for c in Candidates for t in Times for sc in Scenarios)
     # Can't carry any stock in a warehouse that isn't open
-    prob.addConstraint(xp.Sum(warehoused[c-1, p-1, t-1, sc-1] for p in Products) <= Candidates_df["Capacity"][c]*open[c-1, t-1]
-                    for c in Candidates for t in Times for sc in Scenarios)
+    #prob.addConstraint(xp.Sum(warehoused[c-1, p-1, t-1, sc-1] for p in Products) <= Candidates_df["Capacity"][c]*open[c-1, t-1]
+    #                for c in Candidates for t in Times for sc in Scenarios)
     #DELIVERY CONSTRAINTS
     # Cannot deliver from a warehouse that is not open
     prob.addConstraint(delivered[c-1, k, p-1, t-1, sc-1] <= open[c-1, t-1]
@@ -122,11 +116,11 @@ def SCENARIOS_model(Candidates, Times, Suppliers, Products,Customers, Scenarios,
     supply = prob.getSolution(supply)
     delivery = prob.getSolution(delivered)
     for c in Candidates:
+        building_costs = building_costs + build[c-1]*Setup_df["Setup cost"][c-1]
         for t in Times:
             operating_costs = operating_costs + open[c-1,t-1]*Operating_df["Operating cost"][c-1]
-            building_costs = building_costs + build[c-1, t-1]*Setup_df["Setup cost"][c-1]
-
-    build_df = pd.DataFrame(data = build, index = Candidates, columns = Times)
+            
+    build_df = pd.DataFrame(data = build, index = Candidates)
     build_df = build_df[build_df.sum(axis=1) > 0]
     open_df = pd.DataFrame(data = open, index = Candidates, columns = Times)
     open_df = open_df[open_df.sum(axis=1)>0]
@@ -137,7 +131,8 @@ def SCENARIOS_model(Candidates, Times, Suppliers, Products,Customers, Scenarios,
     vals = pd.DataFrame({"number_of_scenarios": [len(Scenarios)],
                         "obj_val": [prob.attributes.objval],
                         "operating_costs": [operating_costs],
-                        "building_costs": [building_costs]})
+                        "building_costs": [building_costs],
+                        "run_time": [prob.attributes.time]})
     vals.to_csv(f"model_stats_{constants.clustertype()}_scenarios{len(Scenarios)}.csv")
 
     print(f"operating costs scenarios: {operating_costs}")
