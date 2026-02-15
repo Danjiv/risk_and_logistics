@@ -53,16 +53,12 @@ def MECWLP_model(Candidates, Times, Suppliers, Products,Customers,
     # ========================================================================================================
     # Constraints
     # ========================================================================================================
-    # warehouses can only be built in one time period
-   # prob.addConstraint(xp.Sum(build[c-1, t-1] for t in Times) <= 1 for c in Candidates)
-    # warehouse cannot be open if it's not been built
-    # not sure this constraint is working as intended!!!!!!
-    #prob.addConstraint(open[c-1, t-1] <= xp.Sum(build[c-1, t2] for t2 in range(t-1)) for c in Candidates for t in Times if t != 1)
-    # Warehouse remains open from the year it's built onwards
-   # prob.addConstraint(open[c-1, t-1] >= build[c-1, t-1] for c in Candidates for t in Times)
+    #Build & open constraints
+    # if a warehouse is open, it must have been built
     prob.addConstraint(xp.Sum(open[c-1, t-1] for t in Times) <= len(Times)*build[c-1] for c in Candidates)
+    # a warehouse remains open
     prob.addConstraint(open[c-1, t-1] >= open[c-1, t-2] for c in Candidates for t in Times if t != 1)
-    #prob.addConstraint(open[c-1, 0] == build[c-1, 0] for c in Candidates)
+
     # SUPPLIER CONSTRAINTS
     # Can't supply to a warehouse that is not open.
     prob.addConstraint(supply[c-1, s-1, t-1] <= open[c-1, t-1]
@@ -72,8 +68,7 @@ def MECWLP_model(Candidates, Times, Suppliers, Products,Customers,
                               for s in Suppliers if Suppliers_df["Product group"][s]==p
                                for c in Candidates )==1 
                        for p in Products for t in Times) 
-    # can't supply more than total capacity
-    #prob.addConstraint(xp.Sum(supply[c-1, s-1, t-1] for c in Candidates) <= Suppliers_df["Capacity"][s] for s in Suppliers for t in Times)
+    # can't supply more than total supplier capacity
     prob.addConstraint(xp.Sum(supply[c-1, s-1, t-1]*TotalDemandProductPeriod_dict[(Suppliers_df["Product group"][s], t)] 
                               for c in Candidates) <= Suppliers_df["Capacity"][s] for s in Suppliers for t in Times)
     # No point in supplying more than total product demand in any period
@@ -84,16 +79,11 @@ def MECWLP_model(Candidates, Times, Suppliers, Products,Customers,
     prob.addConstraint(warehoused[c-1, p-1, t-1] == xp.Sum(supply[c-1, s-1, t-1]*TotalDemandProductPeriod_dict[(Suppliers_df["Product group"][s], t)] 
                             for s in Suppliers if Suppliers_df["Product group"][s] == p)
                             for c in Candidates for p in Products for t in Times)
-    
-   # prob.addConstraint(xp.Sum(warehoused[c-1, p-1, t-1] for p in Products) <= Candidates_df["Capacity"][c] for c in Candidates for t in Times)
-    #Can't carry more stock than max capacity
+    #warehouse cannot hold more stock than its capacity
     prob.addConstraint(xp.Sum(warehoused[c-1, p-1, t-1] for p in Products) <= Candidates_df["Capacity"][c]
                     for c in Candidates for t in Times)
     #DELIVERY CONSTRAINTS
 
-    #prob.addConstraint(xp.Sum(delivered[c-1, k, p-1, t-1]*DemandPeriodsGrouped[Customers[k], p, t]
-    #                           for c in Candidates) >= DemandPeriodsGrouped[Customers[k], p, t]
-    #                   for k in range(len(Customers)) for p in Products for t in Times)
     # Cannot deliver from a warehouse that is not open
     prob.addConstraint(delivered[c-1, k, p-1, t-1] <= open[c-1, t-1]
                     for c in Candidates for k in range(len(Customers)) for p in Products for t in Times)
